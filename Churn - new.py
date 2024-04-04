@@ -6,9 +6,9 @@ from dateutil.relativedelta import *
 import warnings
 
 import pandas as pd
-from BaseProjections.Constants import *
-from BaseProjections.Formats import *
-from RevenueSaaS.Collections import *
+from Constants import *
+from Formats import *
+from Collections import *
 
 class CChurn():
 
@@ -39,19 +39,22 @@ class CChurn():
         months_lookback = inputs.ChurnMonthsLookback
         months_lookback_delta = relativedelta(months=-months_lookback, days=1)
         churn_start_date = inputs.projections_date + months_lookback_delta
-        
+        #print("Start date type : ", type(inputs.start_date))
         indexStart = df[df['Recognition End'] < churn_start_date].index
         df.drop(indexStart , inplace=True)
         indexEnd = df[df['Recognition Start'] > inputs.projections_date].index
         df.drop(indexEnd , inplace=True)
 
+        print("Start: ", churn_start_date)
+        print("Projections: ", inputs.projections_date)
+        
         df = df.drop(kExistingType, axis=1)
         df = df.drop(kExistingInvoiceDate, axis=1)
         df = df.drop(kExistingCollectionDate, axis=1)
         df = df.drop(kExistingAmount, axis=1)
         df = df.drop(kExistingContractMonths, axis=1)
-        temp_date = datetime.min        
-
+        temp_date = datetime.min
+         
         df.sort_values(by = [kExistingClientID, kExistingProduct, kExistingRecognitionEnd], ascending = [True, True, True], inplace = True)
 
         writer = pd.ExcelWriter(inputs.full_path_output + kChurn_file, engine = 'xlsxwriter')
@@ -127,7 +130,7 @@ class CChurn():
 
         # loop thru each of the two dataframes (or convert to a list) and insert any missomg products with either
         # a count of zero or a churn of zero - all products must have an entry
-        
+
         invoice_groupby.to_excel(writer, sheet_name = kChurnOccuranceSummary, index = False)
         churn_groupby.to_excel(writer, sheet_name = kChurnInvoiceSummary, index = False)
 
@@ -139,6 +142,7 @@ class CChurn():
     def churn_product_list(self, churn_list):
 
         #create index for later use
+        print("Churn list: ", churn_list)
         for row in churn_list:
             productID = row[kProductChurnProductIndex]
             productID = productID.replace("'", "")
@@ -217,6 +221,7 @@ class CChurn():
 
     def getProductChurn(self, product):
 
+        print(self.productIndexs)
         try:
             #product match
             product_index = self.productIndexs.index(product)
@@ -224,7 +229,6 @@ class CChurn():
             return churn
 
         except:
-            #new client, or no data
-            print("Couldn't find the Product in Product list", product)
-            # use estimate from inputs
+            #new client, or no data - use etimate from in
+            print("Couldn't find the Product in Product list - oops", product)
             return kChurnZero

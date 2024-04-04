@@ -6,9 +6,9 @@ from dateutil.relativedelta import *
 import warnings
 
 import pandas as pd
-from Constants import *
-from Formats import *
-from Collections import *
+from BaseProjections.Constants import *
+from BaseProjections.Formats import *
+from RevenueSaaS.Collections import *
 
 class CProducts():
     

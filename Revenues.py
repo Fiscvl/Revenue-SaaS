@@ -5,10 +5,9 @@ from dateutil.relativedelta import *
 import warnings
 
 import pandas as pd
-from Constants import *
-from Formats import *
-from Collections import *
-from Churn import *
+from BaseProjections.Constants import *
+from RevenueSaaS.Collections import *
+from RevenueSaaS.Churn import *
 
 #test/test
 
@@ -35,7 +34,7 @@ warnings.filterwarnings("ignore")
 
 class CRevenues():
 
-    def __init__(self, inputs, ac_revenues, journal_entry, formats, products):
+    def __init__(self, inputs, ac_revenues, journal_entry, formats, products, rev_expense_log):
         self.existing = {}
         self.renew = {}
         self.new = {}
@@ -47,6 +46,8 @@ class CRevenues():
         self.revenue_dict = {}      
         self.revenue_dict_to_TB = {}
         self.revenue_products = {}
+        self.rev_explog = rev_expense_log
+        self.transaction_log = []
         
         base_df = pd.DataFrame()
         self.ac_revenues = ac_revenues
@@ -160,7 +161,6 @@ class CRevenues():
                 
                 invoice_date = row[kExistingInvoiceDate]
                 end_date = row[kExistingRecognitionEnd]
-                #print(f"Here's the end_date: {end_date}")
 
 #Here's the commission section - Existing
 
@@ -351,11 +351,11 @@ class CRevenues():
 
         if contract_renew == kSkipContract:
             skip_contract = True
-            print("bogus skip contract 1")
+            print("bogus skip contract")
 
         if contract_frequency != kContractRenewing:
             skip_contract = True
-            print("bogus skip contract 2")        
+            print("bogus skip contract renewing")        
         
         if self.ContractRenewing(end_date, inputs):
 
@@ -555,10 +555,14 @@ class CRevenues():
         collection_row = data_row + zero_row.copy()
         commissions_row = data_row + zero_row.copy()        
 
+        
         invoice_date = data_row[kRevInvoiceDateIndex]  
         invoice_month = inputs.dates.GetMonthNum(data_row[kRevInvoiceDateIndex])
         start_month  = inputs.dates.GetMonthNum(data_row[kRevStartMRRIndex])
-        end_month = inputs.dates.GetMonthNum(data_row[kRevEndMRRIndex])
+        #end_month = inputs.dates.GetMonthNum(data_row[kRevEndMRRIndex])
+        term = data_row[kRevMRRTermIndex]
+        end_month = start_month + term - 1
+        #print("months, start, end: ",start_month,  end_month)
         collection_date = data_row[kRevCollectDateIndex]
         clientID = data_row[kRevClientIdIndex]
         commission = data_row[kRevCommissionIndex]
@@ -569,7 +573,6 @@ class CRevenues():
         invoice_amount = round(data_row[kRevInvoiceAmtIndex],2)
         mrr = round(data_row[kRevMRRAmtIndex],2)
         
-        term = data_row[kRevMRRAmtIndex]
         proj_date = inputs.projections_date
         proj_month = inputs.projections_start
         proj_end = inputs.months_total
@@ -607,10 +610,17 @@ class CRevenues():
             deferred = False
             
             # Now check to see if there is any accrual amount before the start of the simulation
-            
-            if start_month < proj_month:
-                accrual_amount = -(proj_month - start_month) * mrr
-            
+            # why why why???        
+            #if start_month < proj_month:
+
+            accrual_amount = -(invoice_month - start_month + 1) * mrr
+            #if mrr == -666.67:
+                
+                #print("accrual amount: ", accrual_amount)
+                #print("start month ", start_month)
+                #print("end month: ", end_month)
+                #print("invoice month: ", invoice_month)
+                    
         else:
             accrued = False
             deferred = True
@@ -631,7 +641,20 @@ class CRevenues():
         if ((invoice_month > start_month) and (invoice_month <= end_month)):
             # Accrual then Deferred
             invoice_middle_mrr = True
-            deferred_row[kRevProductIndex] = "Middle" 
+            deferred_row[kRevProductIndex] = "Middle"
+
+            #print("projection month: ", proj_month)
+            #print("row number: ", data_row[kRevLineNumIndex])
+            #print("mrr : ", mrr)
+            #print("accrued months: ", start_month)
+            #print("deferred months: ", end_month)
+            #print("invoice month: ", invoice_month)
+            #print("total term - calculated: ", end_month - start_month + 1)
+            #print("total term: ", term)
+            #accrued_term = invoice_month - start_month
+            #deferred_term = end_month - invoice_month + 1
+            #print("accrued term: ", accrued_term)
+            #print("deferred term: ", deferred_term)            
                 
         if (invoice_month > end_month):
             # Accrual
@@ -640,11 +663,15 @@ class CRevenues():
 
         if not(invoice_before_at_mrr) and not(invoice_middle_mrr) and not(invoice_after_mrr):
             print("Error in begin/middle/end")
+
+        #Calculate min and max months open - in order to minumize loop & save execution time
                    
         for i in range(proj_month, proj_end):
 
+
             #record mrr & DR side
             if (i >= start_month) and (i <= end_month):
+
                 revenue_row[i+kRevColumns] = -mrr
                 if commission_type == kCommMRR:
                     commissions_row[i+kRevColumns] = mrr * commission
@@ -661,7 +688,7 @@ class CRevenues():
                 if commission_type == kCommInvoice:
                     commissions_row[i+kRevColumns] = invoice_amount * commission
 
-                #CR to Deferred/Accrued
+                #CR to Accrued/Deferred
                 if invoice_before_at_mrr:
 
                     if invoice_month < start_month:
@@ -674,6 +701,7 @@ class CRevenues():
                     deferred_row[i+kRevColumns] = round( - invoice_amount + deferred_amount, 2)                
 
                 elif invoice_middle_mrr:
+
                     #eliminate accruals
                     accrued_row[i+kRevColumns] = round(accrued_row[i+kRevColumns] + accrual_amount, 2)
                     #add remainder to deferred
@@ -684,6 +712,7 @@ class CRevenues():
                 else:
                     accrued_row[i+kRevColumns] = - invoice_amount                    
 
+            #collection month
             if i == collection_month and collection_month >= proj_month:
                 # use the above created collection month
                 collection_row[i+kRevColumns] = invoice_amount
@@ -931,8 +960,8 @@ class CRevenues():
                     #how does this work for "New" ?
                     for row in self.products.products_list:
                         product_name = row[kProductNameIndex]
-                        DR_ac = filtered_df.iat[0,kAccountIndex]
-                        CR_ac = row[kProductAccountIndex]
+                        DR_acct = filtered_df.iat[0,kAccountIndex]
+                        CR_acct = row[kProductAccountIndex]
 
                         #get amount from product revenue data structure
                         products_rev = self.revenue_products[key]
@@ -948,18 +977,23 @@ class CRevenues():
 
                         #call the JE for each product
 
-                        TB = self.journal_entry.performJE(month, TB, DR_ac, CR_ac, amount)
+                        TB = self.journal_entry.performJE(month, TB, DR_acct, CR_acct, amount)
 
                 else:
 
                     if (rev_type == kDeferred):
                         amount = - amount
                     
-                    DR_ac = filtered_df.iat[0,kAccountIndex]
-                    CR_ac = filtered_df.iat[1,kAccountIndex]
+                    DR_acct = filtered_df.iat[0,kAccountIndex]
+                    CR_acct = filtered_df.iat[1,kAccountIndex]
                     
                     #call the JE
-                    TB = self.journal_entry.performJE(month, TB, DR_ac, CR_ac, amount)
+                    TB = self.journal_entry.performJE(month, TB, DR_acct, CR_acct, amount)
+
+                if self.rev_explog:
+                    log_date = inputs.get_date(month)
+                    log_list = [log_date, DR_acct, CR_acct, amount]
+                    self.transaction_log.append(log_list)
             else:
                 print("something is wrong with how the accounts are setup")
                 

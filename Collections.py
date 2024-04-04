@@ -7,8 +7,8 @@ import warnings
 
 import pandas as pd
 import numpy as np
-from Constants import *
-from Formats import *
+from BaseProjections.Constants import *
+from BaseProjections.Formats import *
 
 
 class CCollections():
